@@ -34,6 +34,14 @@
       "url": "https://github.com/porhe911/App-Title/releases/download/v0.2.17/App_Title_v0.2.17.elf"
     },
     {
+      "id": "rfarkv-ps5-dualsense-deadzone",
+      "name": "ps5-dualsense-deadzone",
+      "description": "Fork of Iziman127/ps5-dualsense-deadzone. DualSense stick deadzone filter for jailbroken PS5, adding anti-deadzone, per-game presets, on-screen notifications and a home-screen icon.",
+      "filename": "ps5-dualsense-deadzone.elf",
+      "version": "0.2",
+      "url": "https://github.com/rfarkv/ps5-dualsense-deadzone/releases/download/v0.2/ps5-dualsense-deadzone.elf"
+    },
+    {
       "id": "stonedmodder-prospero-menu",
       "name": "Prospero-Menu",
       "description": "Community expandable overlay system for homebrewed PS5",
