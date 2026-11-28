@@ -152,7 +152,9 @@
   ul.repos li.empty { display: block; }
   ul.repos { transition: opacity .15s; }
   ul.repos.loading { opacity: .45; }
-  #refreshBtn { min-width: 108px; }
+  #refreshBtn { min-width: 124px; }
+  #runBtn { min-width: 172px; }
+  [hidden] { display: none !important; }
   details summary { cursor: pointer; color: var(--muted); font-size: .9rem; margin-top: 12px; }
   details .row { margin-top: 10px; }
   @media (max-width: 520px) {
@@ -191,6 +193,7 @@
     <div id="tokenMsg" class="msg"></div>
     <div id="addMsg" class="msg"></div>
     <div id="listMsg" class="msg"></div>
+    <div id="actionMsg" class="msg"></div>
   </div>
 
   <section id="urlCard">
@@ -203,13 +206,13 @@
   </section>
 
   <section id="trackedCard">
-    <h2>Tracked GitHub repositories <span id="repoCount" class="badge">0</span><span class="spacer"></span><button id="refreshBtn" class="ghost small" type="button">Refresh</button><button id="openAddBtn" class="small" type="button">+ Add</button></h2>
+    <h2>Tracked GitHub repositories <span id="repoCount" class="badge">0</span><span class="spacer"></span><button id="refreshBtn" class="ghost small" type="button">Refresh list</button><button id="runBtn" class="ghost small" type="button" hidden title="Run the Action now: check every tracked GitHub repository for a new release and update payloads.json">Check for new releases</button><button id="openAddBtn" class="small" type="button">+ Add</button></h2>
     <div class="list-scroll">
       <ul id="repoList" class="repos"><li class="empty">Loading…</li></ul>
     </div>
   </section>
 
-  <footer id="pageFooter">Every change to the <span class="mono">repos/</span> folder triggers the Action that regenerates <span class="mono">payloads.json</span> (takes ~1–2 min plus the Pages deploy).</footer>
+  <footer id="pageFooter">Every change to the <span class="mono">repos/</span> folder triggers the Action that regenerates <span class="mono">payloads.json</span> (takes ~1–2 min plus the Pages deploy).<br><span id="versionInfo"></span></footer>
 </main>
 
 <dialog id="tokenDialog" class="modal wide" aria-labelledby="tokenTitle">
@@ -224,7 +227,8 @@
   </p>
   <p class="hint">
     Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-Grained Token</a>
-    with access to <b>only</b> this repository and the <b>Contents: Read and write</b> permission.
+    with access to <b>only</b> this GitHub repository and these permissions: <b>Contents: Read and write</b> (add and remove payloads)
+    and <b>Actions: Read and write</b> (<b>Check for new releases</b> button).
     It is stored only in this browser's <span class="mono">localStorage</span> and sent only to the GitHub API.
     Every page under <span class="mono" id="originHint"></span> shares that storage, so keep the token's scope limited.
   </p>
@@ -283,6 +287,9 @@
 
 <script>
 (() => {
+  // Bump on every release (moving the v1 tag) so people can tell which code their page runs.
+  const APP_VERSION = '1.1.0';
+  const WORKFLOW = 'update.yml';
   const API = 'https://api.github.com';
   const DIR = 'repos';
   const BRANCH = 'main';
@@ -372,6 +379,7 @@
 
   function renderMode() {
     const banner = $('modeBanner');
+    $('runBtn').hidden = !hasToken();
     if (hasToken()) {
       banner.className = 'msg show ok';
       banner.innerHTML = `<b>Edit mode</b> — changes are written to <span class="mono">${esc(target.owner)}/${esc(target.repo)}</span> using the token saved in this browser.`;
@@ -481,6 +489,7 @@
       $('repoList').innerHTML = '<li class="empty">Set the repository owner under <a href="#" data-open-token>GitHub token → This GitHub repository</a>.</li>';
       return;
     }
+    checkAction();
     try {
       await Promise.all([fetchDir(), loadCatalog()]);
       hideMsg(listMsg);
@@ -490,6 +499,67 @@
       showMsg(listMsg, 'err', `Could not read the ${DIR}/ folder: ${apiErrorText(e)}`);
     }
   }
+
+  // ---------- Action health ----------
+  // Without the Action nothing ever leaves "pending". Forks start with workflows disabled, and a
+  // repository without "Read and write" workflow permissions fails on the push.
+  async function checkAction() {
+    const msg = $('actionMsg');
+    const actions = `${repoUrl()}/actions/workflows/${WORKFLOW}`;
+    const runOnce = `open <a href="${esc(actions)}" target="_blank" rel="noopener">Update payloads.json</a> and click <b>Run workflow</b> once`;
+    try {
+      const wf = await gh(`/repos/${target.owner}/${target.repo}/actions/workflows/${WORKFLOW}`);
+      if (wf.state !== 'active') {
+        showMsg(msg, 'err', `<b>The Action that updates payloads.json is disabled</b> in this GitHub repository, so changes stay pending. Open the <a href="${esc(repoUrl())}/actions" target="_blank" rel="noopener">Actions tab</a>, enable workflows, then ${runOnce}.`);
+        return;
+      }
+      const runs = await gh(`/repos/${target.owner}/${target.repo}/actions/workflows/${WORKFLOW}/runs?per_page=1`);
+      const last = runs.workflow_runs && runs.workflow_runs[0];
+      if (!last) {
+        showMsg(msg, 'info', `<b>The Action that updates payloads.json has never run.</b> To build it now, ${runOnce}.`);
+      } else if (last.status === 'completed' && last.conclusion === 'failure') {
+        showMsg(msg, 'err', `<b>The last <a href="${esc(last.html_url)}" target="_blank" rel="noopener">run of the Action</a> failed.</b> Check that <b>Settings → Actions → General → Workflow permissions</b> is set to <b>Read and write permissions</b>, then ${runOnce}.`);
+      } else {
+        hideMsg(msg);
+      }
+    } catch {
+      hideMsg(msg); // Missing workflow, rate limit, offline: not worth a warning.
+    }
+  }
+
+  // "Check for new releases": starts the Action now instead of waiting for the 6-hour schedule.
+  // Needs the token's Actions: Read and write permission; without it GitHub answers 403.
+  const tokenHelp = () => `On GitHub, <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">edit your token</a>
+    (or <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">create a new one</a> and save it here again)
+    with access to only <span class="mono">${esc(target.owner)}/${esc(target.repo)}</span> and these permissions:
+    <b>Contents: Read and write</b> and <b>Actions: Read and write</b>.`;
+
+  $('runBtn').addEventListener('click', async () => {
+    const btn = $('runBtn');
+    const msg = $('actionMsg');
+    btn.disabled = true;
+    btn.textContent = 'Starting…';
+    try {
+      await gh(`/repos/${target.owner}/${target.repo}/actions/workflows/${WORKFLOW}/dispatches`, {
+        method: 'POST',
+        body: JSON.stringify({ ref: BRANCH }),
+      });
+      showMsg(msg, 'ok', `<b>Checking for new releases.</b> The Action is looking for new releases of every tracked GitHub repository; if anything changed, payloads.json is updated in ~1–2 min. <a href="${esc(repoUrl())}/actions/workflows/${WORKFLOW}" target="_blank" rel="noopener">View the run</a>.`);
+      btn.textContent = 'Started ✓';
+      setTimeout(() => { btn.textContent = 'Check for new releases'; btn.disabled = false; }, 2000);
+      return;
+    } catch (e) {
+      if (e.status === 403 || e.status === 404) {
+        showMsg(msg, 'err', `<b>Your token can't start the Action.</b> ${tokenHelp()}`);
+      } else if (e.status === 422) {
+        showMsg(msg, 'err', `<b>The Action is disabled</b> in this GitHub repository. Open the <a href="${esc(repoUrl())}/actions" target="_blank" rel="noopener">Actions tab</a> and enable workflows, then try again.`);
+      } else {
+        showMsg(msg, 'err', `Could not start the Action: ${apiErrorText(e)}`);
+      }
+    }
+    btn.textContent = 'Check for new releases';
+    btn.disabled = false;
+  });
 
   // Visible feedback: "Refreshing…" while loading (list dimmed), then "Updated ✓" for a moment.
   $('refreshBtn').addEventListener('click', async () => {
@@ -505,8 +575,8 @@
     list.classList.remove('loading');
     btn.disabled = false;
     const failed = $('listMsg').classList.contains('err');
-    btn.textContent = failed ? 'Refresh' : 'Updated ✓';
-    if (!failed) setTimeout(() => { btn.textContent = 'Refresh'; }, 1500);
+    btn.textContent = failed ? 'Refresh list' : 'Updated ✓';
+    if (!failed) setTimeout(() => { btn.textContent = 'Refresh list'; }, 1500);
   });
 
   // ---------- Header / URLs ----------
@@ -920,6 +990,12 @@
     const ro = new ResizeObserver(fitTracked);
     for (const el of [$('modeBanner'), $('notices'), $('urlCard')]) ro.observe(el);
   }
+
+  $('versionInfo').textContent = !SRC || SRC.isUpstream
+    ? `Version ${APP_VERSION}`
+    : SRC.active === 'upstream'
+      ? `Version ${APP_VERSION} · upstream code (${SRC.upstream} @ ${SRC.version})`
+      : `Version ${APP_VERSION} · local code`;
 
   renderTarget();
   refresh();

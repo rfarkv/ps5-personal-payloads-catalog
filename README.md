@@ -10,7 +10,7 @@ You choose which GitHub repositories to track, and a GitHub Action keeps `payloa
 
 1. **Fork** this GitHub repository.
 2. In your fork, open the **Actions** tab and click the button to enable workflows.
-3. Go to **Settings → Actions → General**, and under **Workflow permissions** select **Read and write permissions**. Save.
+3. Go to **Settings → Actions → General**, and under **Workflow permissions** select **Read and write permissions**. Save. Then go back to **Actions**, open **Update payloads.json** and click **Run workflow** once.
 4. Go to **Settings → Pages**, choose **Deploy from a branch**, branch `main`, folder `/ (root)`. Save and wait about a minute.
 5. Create a [GitHub token](#github-token) with access to only your fork.
 6. Open `https://YOUR-USER.github.io/ps5-personal-payloads-catalog/manage/`, click **Set GitHub token**, paste it and click **Save**. Leave **Code source** on **Upstream** ([what's the difference?](#code-source-upstream-or-local)).
@@ -37,7 +37,7 @@ Click **+ Add**, paste one or more GitHub repository URLs (one per line), click 
 
 Create a file in the `repos/` folder (for example `owner__repo.txt`) containing the GitHub repository URL, `https://github.com/owner/repo`. A single file can also list several GitHub repositories, one per line. Commit to `main` and the Action updates `payloads.json`.
 
-Either way, the new payload shows up within a few minutes. The GitHub repository needs a release with a `.elf` or `.bin` file.
+Either way, the new payload shows up within a few minutes. The GitHub repository needs a release with a `.elf` or `.bin` file. If payloads stay **pending** (or **pending removal**), the Action isn't running: the page shows a warning at the top when it is disabled or its last run failed.
 
 Your fork starts with the original list of tracked GitHub repositories. Remove the ones you don't want from the management page.
 
@@ -49,14 +49,17 @@ In the Payload Manager, add this URL as a repository:
 https://YOUR-USER.github.io/ps5-personal-payloads-catalog/payloads.json
 ```
 
-The management page also shows this URL with a **Copy** button. Whenever a tracked GitHub repository publishes a new release, the payload repository is updated automatically within 6 hours, and the Payload Manager will offer the new version.
+The management page also shows this URL with a **Copy** button. Whenever a tracked GitHub repository publishes a new release, the payload repository is updated automatically within 6 hours, and the Payload Manager will offer the new version. To update it right away, click **Check for new releases** on the management page.
 
 ## GitHub token
 
 The management page needs a [Fine-Grained Personal Access Token](https://github.com/settings/personal-access-tokens/new) to save changes to your fork:
 
 - **Repository access:** *Only select repositories*, with only your fork selected.
-- **Permissions → Contents:** *Read and write*.
+- **Permissions → Contents:** *Read and write*, to add and remove payloads.
+- **Permissions → Actions:** *Read and write*, for the **Check for new releases** button.
+
+Already have a token without the Actions permission? [Edit it](https://github.com/settings/personal-access-tokens) on GitHub and add it; the saved token keeps working.
 
 You only enter it once per browser. It stays saved there until it expires or you remove it, and it is only ever sent to the GitHub API.
 
